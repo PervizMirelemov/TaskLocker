@@ -1,0 +1,13 @@
+﻿<Window x:Class="TaskLocker.WPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Task Locker" Height="300" Width="400">
+    <Grid>
+        <Button Content="Блокировать систему"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="20,10"
+                FontSize="16"
+                Command="{Binding LockCommand}" />
+    </Grid>
+</Window>
