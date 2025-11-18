@@ -13,5 +13,6 @@ namespace TaskLocker.WPF.Services
 
         // New: request the OS to lock the workstation
         bool LockWorkStation();
+        TimeSpan NextShowDelay { get; set; }
     }
 }

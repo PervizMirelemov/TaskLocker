@@ -1,13 +1,32 @@
 ﻿<Window x:Class="TaskLocker.WPF.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Task Locker" Height="300" Width="400">
+        Title="Task Locker" Height="250" Width="450"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen">
     <Grid>
-        <Button Content="Блокировать систему"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Padding="20,10"
-                FontSize="16"
-                Command="{Binding LockCommand}" />
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Вы хотите продолжить работу?" 
+                       FontSize="18" 
+                       FontWeight="Bold"
+                       TextWrapping="Wrap" 
+                       TextAlignment="Center"
+                       Margin="0,0,0,30"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button Content="Да"
+                        Width="100" Height="40"
+                        FontSize="16"
+                        Command="{Binding YesCommand}" 
+                        Margin="0,0,20,0"/>
+
+                <Button Content="Нет"
+                        Width="100" Height="40"
+                        FontSize="16"
+                        Command="{Binding NoCommand}" />
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </Window>

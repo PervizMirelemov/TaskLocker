@@ -1,16 +1,11 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Windows;
 
 namespace TaskLocker.WPF.Services
 {
     public class ShutdownDialogMonitorService : IHostedService, IDisposable
     {
-        // one-shot timer; schedule next run manually so we can guarantee "5 seconds after close"
-        private const int TimerIntervalSeconds = 5;
+        private const int DefaultIntervalSeconds = 5;
         private readonly IWindowManagementService _windowService;
         private readonly ILogger<ShutdownDialogMonitorService> _logger;
         private Timer? _timer;
@@ -25,7 +20,6 @@ namespace TaskLocker.WPF.Services
         public Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogInformation("Starting ShutdownDialogMonitorService.");
-            // fire once immediately; after each callback we reschedule for TimerIntervalSeconds
             _timer = new Timer(DoWork, null, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
             return Task.CompletedTask;
         }
@@ -35,35 +29,10 @@ namespace TaskLocker.WPF.Services
             if (Interlocked.Exchange(ref _running, 1) == 1) return;
             try
             {
-                _logger.LogInformation("Monitor tick: checking shutdown dialog...");
-
-                var dispatcher = Application.Current?.Dispatcher;
-                if (dispatcher != null)
+                // Если окно не видно, показываем его (это блокирующий вызов для нашего WPF окна)
+                if (!_windowService.IsShutdownDialogVisible())
                 {
-                    dispatcher.Invoke(() =>
-                    {
-                        if (!_windowService.IsShutdownDialogVisible())
-                        {
-                            _logger.LogWarning("Shutdown dialog not visible � forcing show.");
-                            _windowService.ShowShutdownDialog();
-                        }
-                        else
-                        {
-                            _logger.LogInformation("Shutdown dialog already visible.");
-                        }
-                    });
-                }
-                else
-                {
-                    if (!_windowService.IsShutdownDialogVisible())
-                    {
-                        _logger.LogWarning("Shutdown dialog not visible � forcing show.");
-                        _windowService.ShowShutdownDialog();
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Shutdown dialog already visible.");
-                    }
+                    _windowService.ShowShutdownDialog();
                 }
             }
             catch (Exception ex)
@@ -73,15 +42,29 @@ namespace TaskLocker.WPF.Services
             finally
             {
                 Interlocked.Exchange(ref _running, 0);
-                // schedule next run exactly TimerIntervalSeconds after this callback completes (i.e. after modal closes)
+
+                // ОПРЕДЕЛЯЕМ СЛЕДУЮЩУЮ ЗАДЕРЖКУ
+                TimeSpan delay;
+                if (_windowService.NextShowDelay > TimeSpan.Zero)
+                {
+                    // Если была установлена особая задержка (нажата кнопка "Да")
+                    delay = _windowService.NextShowDelay;
+                    _logger.LogInformation("Snoozing dialog for {Delay}", delay);
+
+                    // Сбрасываем обратно на стандартную для следующего раза
+                    _windowService.NextShowDelay = TimeSpan.Zero;
+                }
+                else
+                {
+                    // Стандартная задержка 5 секунд
+                    delay = TimeSpan.FromSeconds(DefaultIntervalSeconds);
+                }
+
                 try
                 {
-                    _timer?.Change(TimeSpan.FromSeconds(TimerIntervalSeconds), Timeout.InfiniteTimeSpan);
+                    _timer?.Change(delay, Timeout.InfiniteTimeSpan);
                 }
-                catch (ObjectDisposedException)
-                {
-                    // ignore if timer disposed during shutdown
-                }
+                catch (ObjectDisposedException) { }
             }
         }
 

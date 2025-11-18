@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Windows;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using TaskLocker.WPF.Native;
+using TaskLocker.WPF.ViewModels;
 
 namespace TaskLocker.WPF.Services
 {
@@ -12,33 +14,28 @@ namespace TaskLocker.WPF.Services
         private const string WindowTitle_EN = "Shut Down Windows";
 
         private readonly ILogger<PInvokeWindowService> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
-        // fallback WPF dialog reference (used when OS dialog not found)
         private Window? _fallbackDialog;
         private readonly object _dialogLock = new();
 
-        public PInvokeWindowService(ILogger<PInvokeWindowService> logger)
+        // Реализация нового свойства (по умолчанию 0, что будет значить "стандартные 5 секунд")
+        public TimeSpan NextShowDelay { get; set; } = TimeSpan.Zero;
+
+        public PInvokeWindowService(ILogger<PInvokeWindowService> logger, IServiceProvider serviceProvider)
         {
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         private IntPtr FindShutdownWindowHandle()
         {
             IntPtr hWnd = NativeMethods.FindWindowW(DialogClassName, WindowTitle_RU);
-            if (hWnd != IntPtr.Zero)
-            {
-                _logger.LogTrace("Found shutdown dialog (RU) {Handle}", hWnd);
-                return hWnd;
-            }
+            if (hWnd != IntPtr.Zero) return hWnd;
 
             hWnd = NativeMethods.FindWindowW(DialogClassName, WindowTitle_EN);
-            if (hWnd != IntPtr.Zero)
-            {
-                _logger.LogTrace("Found shutdown dialog (EN) {Handle}", hWnd);
-                return hWnd;
-            }
+            if (hWnd != IntPtr.Zero) return hWnd;
 
-            _logger.LogDebug("Shutdown dialog not found by class/title.");
             return IntPtr.Zero;
         }
 
@@ -53,7 +50,6 @@ namespace TaskLocker.WPF.Services
                 return;
             }
 
-            // fallback: show an application modal WPF dialog so the monitor can re-open it later
             try
             {
                 var dispatcher = Application.Current?.Dispatcher;
@@ -79,11 +75,28 @@ namespace TaskLocker.WPF.Services
                 if (_fallbackDialog != null && _fallbackDialog.IsVisible) return;
 
                 _logger.LogInformation("Showing fallback WPF shutdown dialog.");
-                _fallbackDialog = new MainWindow();
+
+                var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+
+                _fallbackDialog = new MainWindow
+                {
+                    DataContext = viewModel
+                };
+
                 var owner = Application.Current?.MainWindow;
-                if (owner != null && owner != _fallbackDialog) _fallbackDialog.Owner = owner;
-                // ShowDialog blocks until user closes the modal; monitor schedules next show after the callback completes
+                if (owner != null && owner != _fallbackDialog && owner.IsVisible)
+                {
+                    _fallbackDialog.Owner = owner;
+                }
+                else
+                {
+                    Application.Current.MainWindow = _fallbackDialog;
+                }
+
+                // Показываем окно и ждем его закрытия
                 _fallbackDialog.ShowDialog();
+
+                // Ссылка очищается, логика (Lock или Snooze) уже выполнена кнопками во ViewModel
                 _fallbackDialog = null;
             }
         }
@@ -93,49 +106,36 @@ namespace TaskLocker.WPF.Services
             IntPtr hWnd = FindShutdownWindowHandle();
             if (hWnd != IntPtr.Zero)
             {
-                _logger.LogInformation("Hiding shutdown dialog (Handle: {Handle})", hWnd);
                 NativeMethods.ShowWindow(hWnd, NativeMethods.SW_HIDE);
                 return;
             }
 
             var dispatcher = Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
-            {
-                dispatcher.Invoke(() =>
-                {
-                    lock (_dialogLock)
-                    {
-                        _fallbackDialog?.Close();
-                        _fallbackDialog = null;
-                    }
-                });
-            }
-            else
+            Action closeAction = () =>
             {
                 lock (_dialogLock)
                 {
                     _fallbackDialog?.Close();
                     _fallbackDialog = null;
                 }
-            }
+            };
+
+            if (dispatcher != null && !dispatcher.CheckAccess())
+                dispatcher.Invoke(closeAction);
+            else
+                closeAction();
         }
 
         public bool IsShutdownDialogVisible()
         {
             IntPtr hWnd = FindShutdownWindowHandle();
-            if (hWnd != IntPtr.Zero)
-            {
-                bool visible = NativeMethods.IsWindowVisible(hWnd);
-                _logger.LogTrace("Shutdown dialog visibility: {Visible} (Handle: {Handle})", visible, hWnd);
-                return visible;
-            }
+            if (hWnd != IntPtr.Zero) return NativeMethods.IsWindowVisible(hWnd);
 
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
                 return dispatcher.Invoke(() => _fallbackDialog != null && _fallbackDialog.IsVisible);
             }
-
             return _fallbackDialog != null && _fallbackDialog.IsVisible;
         }
 

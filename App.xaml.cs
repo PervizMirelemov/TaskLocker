@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaskLocker.WPF.Services;
@@ -18,23 +18,22 @@ namespace TaskLocker.WPF
                     services.AddSingleton<IWindowManagementService, PInvokeWindowService>();
                     services.AddHostedService<ShutdownDialogMonitorService>();
 
+                    // Регистрируем только ViewModel, само окно создаст сервис
                     services.AddSingleton<MainViewModel>();
-                    services.AddSingleton(sp => new MainWindow
-                    {
-                        DataContext = sp.GetRequiredService<MainViewModel>()
-                    });
                 })
                 .Build();
         }
 
         protected override async void OnStartup(StartupEventArgs e)
         {
-            // keep the app alive when all windows are closed
+            // Приложение не закроется само, даже если нет открытых окон
             this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             await _host.StartAsync();
-            var mainWindow = _host.Services.GetRequiredService<MainWindow>();
-            mainWindow.Show(); // show the DI-created window
+
+            // УДАЛЕНО: Мы больше не создаем и не показываем окно здесь вручную.
+            // Сервис мониторинга сам обнаружит отсутствие окна и создаст его.
+
             base.OnStartup(e);
         }
 
