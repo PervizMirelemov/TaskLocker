@@ -1,9 +1,12 @@
-﻿using System;
-using System.Windows;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
+using System.Windows;
 using TaskLocker.WPF.Native;
 using TaskLocker.WPF.ViewModels;
+// Явно указываем, что Application - это WPF Application, чтобы избежать конфликтов с WinForms
+using Application = System.Windows.Application;
+// Псевдоним для WinForms, чтобы брать оттуда Screen
+using WinForms = System.Windows.Forms;
 
 namespace TaskLocker.WPF.Services
 {
@@ -16,10 +19,12 @@ namespace TaskLocker.WPF.Services
         private readonly ILogger<PInvokeWindowService> _logger;
         private readonly IServiceProvider _serviceProvider;
 
-        private Window? _fallbackDialog;
+        private readonly List<Window> _openWindows = new();
         private readonly object _dialogLock = new();
 
-        // Реализация нового свойства (по умолчанию 0, что будет значить "стандартные 5 секунд")
+        // Используем Frame для имитации модальности сразу нескольких окон
+        private System.Windows.Threading.DispatcherFrame? _dispatcherFrame;
+
         public TimeSpan NextShowDelay { get; set; } = TimeSpan.Zero;
 
         public PInvokeWindowService(ILogger<PInvokeWindowService> logger, IServiceProvider serviceProvider)
@@ -55,7 +60,7 @@ namespace TaskLocker.WPF.Services
                 var dispatcher = Application.Current?.Dispatcher;
                 if (dispatcher != null && !dispatcher.CheckAccess())
                 {
-                    dispatcher.Invoke(() => ShowFallbackDialogInternal());
+                    dispatcher.Invoke(ShowFallbackDialogInternal);
                 }
                 else
                 {
@@ -72,32 +77,49 @@ namespace TaskLocker.WPF.Services
         {
             lock (_dialogLock)
             {
-                if (_fallbackDialog != null && _fallbackDialog.IsVisible) return;
+                if (_openWindows.Any(w => w.IsVisible)) return;
 
-                _logger.LogInformation("Showing fallback WPF shutdown dialog.");
+                _logger.LogInformation("Showing fallback WPF shutdown dialogs on all screens.");
+                _openWindows.Clear();
 
                 var viewModel = _serviceProvider.GetRequiredService<MainViewModel>();
+                var screens = WinForms.Screen.AllScreens;
 
-                _fallbackDialog = new MainWindow
+                // 1. Создаем и настраиваем окна для всех мониторов
+                foreach (var screen in screens)
                 {
-                    DataContext = viewModel
-                };
+                    var window = new MainWindow
+                    {
+                        DataContext = viewModel,
+                        WindowStartupLocation = WindowStartupLocation.Manual
+                    };
 
-                var owner = Application.Current?.MainWindow;
-                if (owner != null && owner != _fallbackDialog && owner.IsVisible)
-                {
-                    _fallbackDialog.Owner = owner;
+                    double winWidth = window.Width;
+                    double winHeight = window.Height;
+
+                    window.Left = screen.WorkingArea.Left + (screen.WorkingArea.Width - winWidth) / 2;
+                    window.Top = screen.WorkingArea.Top + (screen.WorkingArea.Height - winHeight) / 2;
+
+                    _openWindows.Add(window);
                 }
-                else
+
+                // 2. Показываем ВСЕ окна в режиме .Show() (они все активны)
+                foreach (var window in _openWindows)
                 {
-                    Application.Current.MainWindow = _fallbackDialog;
+                    window.Show();
                 }
 
-                // Показываем окно и ждем его закрытия
-                _fallbackDialog.ShowDialog();
+                // 3. Входим в цикл ожидания (аналог ShowDialog, но для всех окон сразу)
+                // Это останавливает выполнение кода здесь, пока _dispatcherFrame.Continue не станет false
+                if (_openWindows.Count > 0)
+                {
+                    _dispatcherFrame = new System.Windows.Threading.DispatcherFrame();
+                    System.Windows.Threading.Dispatcher.PushFrame(_dispatcherFrame);
+                }
 
-                // Ссылка очищается, логика (Lock или Snooze) уже выполнена кнопками во ViewModel
-                _fallbackDialog = null;
+                // Код продолжится здесь только после вызова HideShutdownDialog
+                _dispatcherFrame = null;
+                _openWindows.Clear();
             }
         }
 
@@ -115,8 +137,18 @@ namespace TaskLocker.WPF.Services
             {
                 lock (_dialogLock)
                 {
-                    _fallbackDialog?.Close();
-                    _fallbackDialog = null;
+                    // Закрываем все окна
+                    foreach (var window in _openWindows)
+                    {
+                        window.Close();
+                    }
+                    _openWindows.Clear();
+
+                    // ВАЖНО: Выходим из цикла ожидания в ShowFallbackDialogInternal
+                    if (_dispatcherFrame != null)
+                    {
+                        _dispatcherFrame.Continue = false;
+                    }
                 }
             };
 
@@ -134,9 +166,9 @@ namespace TaskLocker.WPF.Services
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
-                return dispatcher.Invoke(() => _fallbackDialog != null && _fallbackDialog.IsVisible);
+                return dispatcher.Invoke(() => _openWindows.Any(w => w.IsVisible));
             }
-            return _fallbackDialog != null && _fallbackDialog.IsVisible;
+            return _openWindows.Any(w => w.IsVisible);
         }
 
         public bool LockWorkStation()
@@ -144,7 +176,6 @@ namespace TaskLocker.WPF.Services
             try
             {
                 bool result = NativeMethods.LockWorkStation();
-                _logger.LogInformation("LockWorkStation invoked, result: {Result}", result);
                 return result;
             }
             catch (Exception ex)

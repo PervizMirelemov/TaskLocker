@@ -1,8 +1,12 @@
-﻿using System.Windows;
+﻿using System;
+using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaskLocker.WPF.Services;
 using TaskLocker.WPF.ViewModels;
+
+// РЕШЕНИЕ ПРОБЛЕМЫ: Указываем, что используем WPF Application
+using Application = System.Windows.Application;
 
 namespace TaskLocker.WPF
 {
@@ -18,7 +22,14 @@ namespace TaskLocker.WPF
                     services.AddSingleton<IWindowManagementService, PInvokeWindowService>();
                     services.AddHostedService<ShutdownDialogMonitorService>();
 
-                    // Регистрируем только ViewModel, само окно создаст сервис
+                    // Register typed HttpClient for API access
+                    services.AddHttpClient<IApiService, ApiService>(client =>
+                    {
+                        client.BaseAddress = new Uri("https://api.example.com/v1/");
+                        client.Timeout = TimeSpan.FromSeconds(30);
+                        client.DefaultRequestHeaders.Add("User-Agent", "TaskLocker-WPF");
+                    });
+
                     services.AddSingleton<MainViewModel>();
                 })
                 .Build();
@@ -26,14 +37,8 @@ namespace TaskLocker.WPF
 
         protected override async void OnStartup(StartupEventArgs e)
         {
-            // Приложение не закроется само, даже если нет открытых окон
             this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-
             await _host.StartAsync();
-
-            // УДАЛЕНО: Мы больше не создаем и не показываем окно здесь вручную.
-            // Сервис мониторинга сам обнаружит отсутствие окна и создаст его.
-
             base.OnStartup(e);
         }
 

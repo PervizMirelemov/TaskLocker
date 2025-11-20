@@ -1,5 +1,11 @@
-﻿using Microsoft.Extensions.Hosting;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
+// РЕШЕНИЕ ПРОБЛЕМЫ 2: Указываем явно, какой таймер использовать
+using Timer = System.Threading.Timer;
 
 namespace TaskLocker.WPF.Services
 {
@@ -29,7 +35,6 @@ namespace TaskLocker.WPF.Services
             if (Interlocked.Exchange(ref _running, 1) == 1) return;
             try
             {
-                // Если окно не видно, показываем его (это блокирующий вызов для нашего WPF окна)
                 if (!_windowService.IsShutdownDialogVisible())
                 {
                     _windowService.ShowShutdownDialog();
@@ -43,20 +48,14 @@ namespace TaskLocker.WPF.Services
             {
                 Interlocked.Exchange(ref _running, 0);
 
-                // ОПРЕДЕЛЯЕМ СЛЕДУЮЩУЮ ЗАДЕРЖКУ
                 TimeSpan delay;
                 if (_windowService.NextShowDelay > TimeSpan.Zero)
                 {
-                    // Если была установлена особая задержка (нажата кнопка "Да")
                     delay = _windowService.NextShowDelay;
-                    _logger.LogInformation("Snoozing dialog for {Delay}", delay);
-
-                    // Сбрасываем обратно на стандартную для следующего раза
                     _windowService.NextShowDelay = TimeSpan.Zero;
                 }
                 else
                 {
-                    // Стандартная задержка 5 секунд
                     delay = TimeSpan.FromSeconds(DefaultIntervalSeconds);
                 }
 
