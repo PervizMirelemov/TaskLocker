@@ -22,14 +22,6 @@ namespace TaskLocker.WPF
                     services.AddSingleton<IWindowManagementService, PInvokeWindowService>();
                     services.AddHostedService<ShutdownDialogMonitorService>();
 
-                    // Register typed HttpClient for API access
-                    services.AddHttpClient<IApiService, ApiService>(client =>
-                    {
-                        client.BaseAddress = new Uri("https://api.example.com/v1/");
-                        client.Timeout = TimeSpan.FromSeconds(30);
-                        client.DefaultRequestHeaders.Add("User-Agent", "TaskLocker-WPF");
-                    });
-
                     services.AddSingleton<MainViewModel>();
                 })
                 .Build();

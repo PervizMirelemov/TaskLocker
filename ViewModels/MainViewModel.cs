@@ -9,22 +9,23 @@ namespace TaskLocker.WPF.ViewModels
     public partial class MainViewModel : ObservableObject
     {
         private readonly IWindowManagementService _windowService;
-        private readonly IApiService _apiService;
 
-        public MainViewModel(IWindowManagementService windowService, IApiService apiService)
+        // Свойство для хранения имени пользователя
+        public string CurrentUserName { get; }
+
+        public MainViewModel(IWindowManagementService windowService)
         {
             _windowService = windowService;
-            _apiService = apiService;
+
+            // Получаем имя текущего пользователя Windows
+            CurrentUserName = Environment.UserName;
         }
 
         [RelayCommand]
         private void Yes()
         {
-            // Логика ДА: Скрыть окно и показать через 1 минуту
-            // Устанавливаем задержку 1 минута (60 секунд)
-            _windowService.NextShowDelay = TimeSpan.FromSeconds(20);
-
-            // Закрываем текущее окно
+            // Логика ДА: Скрыть окно и показать через 1 минуту (или другое время)
+            _windowService.NextShowDelay = TimeSpan.FromMinutes(1);
             _windowService.HideShutdownDialog();
         }
 
@@ -33,24 +34,14 @@ namespace TaskLocker.WPF.ViewModels
         {
             // Логика НЕТ: Блокировать систему
             _windowService.LockWorkStation();
-
-            // И закрываем окно
             _windowService.HideShutdownDialog();
         }
 
         [RelayCommand]
-        private async Task SendReport()
+        private Task SendReport()
         {
-            try
-            {
-                await _apiService.SendLogAsync("User triggered SendReport");
-                var status = await _apiService.GetStatusAsync();
-                // Для простоты: логика отображения/обработки результата
-            }
-            catch
-            {
-                // Handle/log errors appropriately (logger can be injected if needed)
-            }
+            // No-op since API integration removed
+            return Task.CompletedTask;
         }
     }
 }
