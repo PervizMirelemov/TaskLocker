@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TaskLocker.WPF.Services;
@@ -10,38 +9,26 @@ namespace TaskLocker.WPF.ViewModels
     {
         private readonly IWindowManagementService _windowService;
 
-        // Свойство для хранения имени пользователя
         public string CurrentUserName { get; }
 
         public MainViewModel(IWindowManagementService windowService)
         {
             _windowService = windowService;
-
-            // Получаем имя текущего пользователя Windows
             CurrentUserName = Environment.UserName;
         }
 
         [RelayCommand]
-        private void Yes()
+        private void Ok()
         {
-            // Логика ДА: Скрыть окно и показать через 1 минуту (или другое время)
-            _windowService.NextShowDelay = TimeSpan.FromMinutes(1);
-            _windowService.HideShutdownDialog();
-        }
+            // 1. Устанавливаем, что следующее окно появится через 20 минут
+            _windowService.NextShowDelay = TimeSpan.FromMinutes(20);
 
-        [RelayCommand]
-        private void No()
-        {
-            // Логика НЕТ: Блокировать систему
-            _windowService.LockWorkStation();
+            // 2. Скрываем текущее окно с кнопкой "ОК"
             _windowService.HideShutdownDialog();
-        }
 
-        [RelayCommand]
-        private Task SendReport()
-        {
-            // No-op since API integration removed
-            return Task.CompletedTask;
+            // 3. Запускаем "псевдо-блокировку" на 30 секунд
+            // (Черный экран, который сам исчезнет)
+            _windowService.StartPseudoLock(TimeSpan.FromSeconds(30));
         }
     }
 }
