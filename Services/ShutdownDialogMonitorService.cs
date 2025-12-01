@@ -1,10 +1,7 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-
-// РЕШЕНИЕ ПРОБЛЕМЫ 2: Указываем явно, какой таймер использовать
+using System.IO;   // Добавлено для работы с файлами
+// Явно указываем таймер
 using Timer = System.Threading.Timer;
 
 namespace TaskLocker.WPF.Services
@@ -12,6 +9,11 @@ namespace TaskLocker.WPF.Services
     public class ShutdownDialogMonitorService : IHostedService, IDisposable
     {
         private const int DefaultIntervalSeconds = 5;
+
+        // ПУТЬ К ФАЙЛУ С ПОЛЬЗОВАТЕЛЯМИ
+        // Укажите здесь реальный путь к вашему txt файлу
+        private const string UserListFilePath = @"C:\Users\pmiralamov\Desktop\users.txt";
+
         private readonly IWindowManagementService _windowService;
         private readonly ILogger<ShutdownDialogMonitorService> _logger;
         private Timer? _timer;
@@ -35,9 +37,19 @@ namespace TaskLocker.WPF.Services
             if (Interlocked.Exchange(ref _running, 1) == 1) return;
             try
             {
-                if (!_windowService.IsShutdownDialogVisible())
+                // 1. ПРОВЕРКА: Разрешено ли этому пользователю видеть окно?
+                if (IsUserAllowed())
                 {
-                    _windowService.ShowShutdownDialog();
+                    // Если пользователь в списке — работаем как обычно
+                    if (!_windowService.IsShutdownDialogVisible())
+                    {
+                        _windowService.ShowShutdownDialog();
+                    }
+                }
+                else
+                {
+                    // Если пользователя нет в списке — ничего не делаем, просто ждем следующего тика
+                    _logger.LogDebug("User not in allowed list. Skipping dialog show.");
                 }
             }
             catch (Exception ex)
@@ -49,6 +61,7 @@ namespace TaskLocker.WPF.Services
                 Interlocked.Exchange(ref _running, 0);
 
                 TimeSpan delay;
+                // Если была установлена задержка (например, 20 минут)
                 if (_windowService.NextShowDelay > TimeSpan.Zero)
                 {
                     delay = _windowService.NextShowDelay;
@@ -64,6 +77,36 @@ namespace TaskLocker.WPF.Services
                     _timer?.Change(delay, Timeout.InfiniteTimeSpan);
                 }
                 catch (ObjectDisposedException) { }
+            }
+        }
+
+        // НОВАЯ ФУНКЦИЯ: Проверка пользователя по файлу
+        private bool IsUserAllowed()
+        {
+            try
+            {
+                // Если файла нет — считаем, что блокировка НЕ должна работать (или создайте пустой файл)
+                if (!File.Exists(UserListFilePath))
+                {
+                    // Можно раскомментировать лог, если нужно знать об отсутствии файла
+                    // _logger.LogWarning($"User list file not found at {UserListFilePath}");
+                    return false;
+                }
+
+                // Читаем файл, убираем пустые строки и пробелы
+                var allowedUsers = File.ReadAllLines(UserListFilePath)
+                                       .Select(line => line.Trim())
+                                       .Where(line => !string.IsNullOrEmpty(line));
+
+                string currentUser = Environment.UserName;
+
+                // Проверяем наличие текущего пользователя в списке (без учета регистра букв)
+                return allowedUsers.Contains(currentUser, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to read allowed users file.");
+                return false; // В случае ошибки файла — не блокируем
             }
         }
 

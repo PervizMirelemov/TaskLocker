@@ -9,9 +9,7 @@ using TaskLocker.WPF.Native;
 using TaskLocker.WPF.ViewModels;
 using TaskLocker.WPF.Views;
 
-// Явно указываем, что Application - это WPF Application
 using Application = System.Windows.Application;
-// Псевдоним для WinForms
 using WinForms = System.Windows.Forms;
 
 namespace TaskLocker.WPF.Services
@@ -39,7 +37,6 @@ namespace TaskLocker.WPF.Services
             _serviceProvider = serviceProvider;
         }
 
-        // --- ЛОГИКА "ПСЕВДО-БЛОКИРОВКИ" С ТАЙМЕРОМ ---
         public async void StartPseudoLock(TimeSpan duration)
         {
             _logger.LogInformation("Starting pseudo-lock for {Duration} seconds.", duration.TotalSeconds);
@@ -49,7 +46,6 @@ namespace TaskLocker.WPF.Services
 
             await dispatcher.InvokeAsync(async () =>
             {
-                // 1. Создаем черные окна на всех мониторах
                 _lockWindows.Clear();
                 foreach (var screen in WinForms.Screen.AllScreens)
                 {
@@ -64,36 +60,42 @@ namespace TaskLocker.WPF.Services
                     _lockWindows.Add(lockWin);
                 }
 
-                // 2. ЦИКЛ ОБРАТНОГО ОТСЧЕТА
                 int secondsLeft = (int)duration.TotalSeconds;
 
                 while (secondsLeft > 0)
                 {
-                    // Обновляем текст на всех экранах
                     foreach (var win in _lockWindows)
                     {
                         if (win is LockOverlayWindow lockScreen)
                         {
                             lockScreen.UpdateTimer(secondsLeft);
+
+                            // Дополнительная защита: постоянно держим окно наверху
+                            lockScreen.Topmost = true;
+                            lockScreen.Activate();
                         }
                     }
 
-                    // Ждем 1 секунду
                     await Task.Delay(1000);
                     secondsLeft--;
                 }
 
-                // 3. Время вышло — закрываем окна
+                // ВРЕМЯ ВЫШЛО: Разрешаем закрытие и закрываем
                 foreach (var win in _lockWindows)
                 {
-                    win.Close();
+                    if (win is LockOverlayWindow lockScreen)
+                    {
+                        // ВАЖНО: Разрешаем закрыть окно, иначе win.Close() тоже не сработает
+                        lockScreen.AllowClose = true;
+                        lockScreen.Close();
+                    }
                 }
                 _lockWindows.Clear();
                 _logger.LogInformation("Pseudo-lock finished. System unlocked.");
             });
         }
 
-        // --- ОСТАЛЬНОЙ КОД БЕЗ ИЗМЕНЕНИЙ ---
+        // --- Остальной код без изменений ---
 
         public void ShowShutdownDialog()
         {
@@ -157,7 +159,6 @@ namespace TaskLocker.WPF.Services
 
         public bool IsShutdownDialogVisible()
         {
-            // Система считается "занятой", если открыт диалог ИЛИ идет блокировка
             var dispatcher = Application.Current?.Dispatcher;
             if (dispatcher != null)
             {
@@ -167,13 +168,11 @@ namespace TaskLocker.WPF.Services
             return false;
         }
 
-        // Заглушка, так как мы используем псевдо-блокировку
         public bool LockWorkStation()
         {
             return true;
         }
 
-        // Приватный метод поиска окна (можно оставить или удалить, если не используется)
         private IntPtr FindShutdownWindowHandle()
         {
             IntPtr hWnd = NativeMethods.FindWindowW(DialogClassName, WindowTitle_RU);
