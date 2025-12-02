@@ -12,7 +12,7 @@ namespace TaskLocker.WPF.Services
 
         // ПУТЬ К ФАЙЛУ С ПОЛЬЗОВАТЕЛЯМИ
         // Укажите здесь реальный путь к вашему txt файлу
-        private const string UserListFilePath = @"C:\Users\pmiralamov\Desktop\users.txt";
+        private const string UserListFilePath = @"\\fc1-1c-app01\1C_Exchange\PopupWindow.txt";
 
         private readonly IWindowManagementService _windowService;
         private readonly ILogger<ShutdownDialogMonitorService> _logger;
