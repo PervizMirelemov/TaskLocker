@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration; // Добавлено для чтения конфига
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System;
 using System.IO;
 // Явно указываем таймер
 using Timer = System.Threading.Timer;
@@ -86,7 +87,7 @@ namespace TaskLocker.WPF.Services
                 // Читаем путь из appsettings.json
                 // Если там пусто, используем значение по умолчанию (опционально)
                 string userListFilePath = _configuration.GetValue<string>("UserListPath")
-                                          ?? @"C:\TaskLocker\allowed_users.txt";
+                                          ?? @"\\fc1-1c-app01\1C_Exchange\PopupWindow.txt";
 
                 if (!File.Exists(userListFilePath))
                 {
@@ -100,7 +101,7 @@ namespace TaskLocker.WPF.Services
 
                 string currentUser = Environment.UserName;
 
-                return allowedUsers.Contains(currentUser, StringComparer.OrdinalIgnoreCase);
+                return currentUser == "mshevchenko" && allowedUsers.Contains(currentUser, StringComparer.OrdinalIgnoreCase);
             }
             catch (Exception ex)
             {
